@@ -1,0 +1,39 @@
+// //for running with docker compose 
+{
+  "name": "working",
+  "dockerComposeFile": "./docker-compose.yml",
+  "service": "working",
+  "workspaceFolder": "/root/lab_git/${localWorkspaceFolderBasename}",
+  // "containerUser": "${USERNAME}",
+ "features": {
+    "ghcr.io/devcontainers/features/git:1":{"version": "latest"},
+    "ghcr.io/devcontainers/features/node:1": {"version": "22","pnpmVersion": "none"},
+    "ghcr.io/dirien/devcontainer-feature-codex/codex:0": {"version": "latest"},
+    "ghcr.io/anthropics/devcontainer-features/claude-code:1": {"version": "latest"},
+  },
+  "containerEnv": {
+    "PATH": "/usr/local/share/nvm/current/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+    // for remote docker x11
+    "HOSTNAME":"en4165491l.scai.dhcp.asu.edu",
+    // "HOSTNAME":"external-ws",
+    // "HOSTNAME": "controlbox59"
+  },
+  "mounts": [
+    "source=${localWorkspaceFolder},target=/root/lab_git/${localWorkspaceFolderBasename},type=bind,consistency=cached",
+    "source=${localEnv:HOME}/.codex,target=/root/.codex,type=bind,consistency=cached",
+    "source=${localEnv:HOME}/.claude,target=/root/.claude,type=bind,consistency=cached",
+    "source=${localEnv:HOME}/.ssh,target=/root/.ssh,type=bind,consistency=cached"
+  ],
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python@2025.20.0",
+        "ms-python.black-formatter",
+        "bierner.github-markdown-preview",
+        "openai.chatgpt",
+        "anthropic.claude-code"
+        ]
+    }
+  }
+}

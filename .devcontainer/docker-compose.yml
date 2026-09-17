@@ -1,0 +1,44 @@
+services:
+  # novnc:  
+  #   image: theasp/novnc:latest
+  #   environment:
+  #     # Adjust to your screen size
+  #    - DISPLAY_WIDTH=1920
+  #    - DISPLAY_HEIGHT=1080
+  #    - RUN_XTERM=no
+  #   ports:
+  #     - 8080:8080 #host_port:container_port
+
+  working:
+    image: lamp:py3
+    privileged: true
+    tty: true
+    entrypoint: ["/bin/bash"]
+    network_mode: "host" #DON'T USE THIS FOR NOVNC
+    # depends_on:
+    #   - novnc
+    environment:
+      - DISPLAY=${DISPLAY}
+      - NVIDIA_DISABLE_REQUIRE=1
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all
+      - ACCEPT_EULA=Y
+      - PRIVACY_CONSENT=Y
+      - XDG_RUNTIME_DIR="/tmp"
+      - WAYLAND_DISPLAY=${WAYLAND_DISPLAY}
+      # - HOSTNAME=${REMOTE_HOSTNAME}
+      - ${XDG_RUNTIME_DIR}/${WAYLAND_DISPLAY}:/tmp/${WAYLAND_DISPLAY}
+
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix
+      - ${HOME}/.Xauthority:/root/.Xauthority
+      - /etc/ssh/ssh_config:/etc/ssh/ssh_config
+
+    runtime: nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
