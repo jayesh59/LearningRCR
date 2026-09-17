@@ -18,7 +18,7 @@ ROOT_DIR = get_parent_with_file("__init__.py")
 if ROOT_DIR is not None and ROOT_DIR not in sys.path:
     sys.path.append(ROOT_DIR)
 
-from Simulator import Simulator
+from .Simulator import Simulator
 
 sim = Simulator()
 

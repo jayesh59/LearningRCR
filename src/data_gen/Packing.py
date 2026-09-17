@@ -100,8 +100,8 @@ class Packing(object):
         if not self.experiment_flag:
             self.setup_base_env()
 
-    def sample_grasp_pose(self,object_name="",pose = []):
-        if pose != []:
+    def sample_grasp_pose(self,object_name="",pose = None):
+        if pose is not None:
             world_T_obj = pose
         else:
             world_T_obj = self.sim_object.get_obj(object_name).get_transform()

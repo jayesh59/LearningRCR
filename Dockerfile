@@ -1,42 +1,45 @@
-FROM ros:melodic-ros-core-bionic
+FROM ubuntu:22.04
 ARG DEBIAN_FRONTEND=noninteractive
-ARG RAVE_COMMIT=7c5f5e27eec2b2ef10aa63fbc519a998c276f908
+ARG RAVE_COMMIT=ec22ecfaf006688cbc5ee0fdd8fa05d2c5676d37
 ARG OSG_COMMIT=1f89e6eb1087add6cd9c743ab07a5bce53b2f480
-ARG BOOST_SRC_DIR=~/git/boost_1_58_0
 ENV QT_X11_NO_MITSHM=1
+ENV OPENRAVE_PLUGINS=/usr/local/lib/openrave0.149-plugins
+ENV LC_ALL=C.UTF-8
+ENV PYTHONPATH=/usr/local/lib/python3/dist-packages:${PYTHONPATH}
 
 RUN rm /bin/sh && ln -s /bin/bash /bin/sh
 
+# Enable universe and multiverse repos (ubuntu:22.04 only has main by default)
+RUN apt-get update && apt-get install -y --no-install-recommends software-properties-common && \
+    add-apt-repository -y universe && \
+    add-apt-repository -y multiverse && \
+    apt-get update
+
+# System dependencies - Python 3.10 (system default on 22.04)
 RUN apt-get update && apt-get install -q -y --no-install-recommends \
     build-essential \
     git \
-    gcc-4.8 \
-    g++-4.8 \
     cmake \
-    python-pip \
+    python3 \
+    python3-dev \
     python3-pip \
     coreutils \
     nano \
     vim \
     tmux \
-    ipython \
     ipython3 \
     minizip \
-    python-dev \
-    python-h5py \
-    python-sympy \
-    qt4-dev-tools \
-    wget \
-    python-wheel
+    wget
 
+# C++ build dependencies
 RUN apt-get install -q -y --no-install-recommends \
     libassimp-dev \
     libavcodec-dev \
     libavformat-dev \
     libboost-all-dev \
     libboost-date-time-dev \
+    libboost-python-dev \
     libbullet-dev \
-    libfaac-dev \
     libglew-dev \
     libgsm1-dev \
     liblapack-dev \
@@ -47,9 +50,6 @@ RUN apt-get install -q -y --no-install-recommends \
     libpcrecpp0v5 \
     libpcre3-dev \
     libqhull-dev \
-    libqt4-dev \
-    libsoqt-dev-common \
-    libsoqt4-dev \
     libswscale-dev \
     libvorbis-dev \
     libx264-dev \
@@ -57,7 +57,6 @@ RUN apt-get install -q -y --no-install-recommends \
     libxvidcore-dev \
     libbz2-dev \
     libtinyxml-dev \
-    liboctave-dev \
     libmpfi-dev \
     libfreetype6-dev \
     libflann-dev \
@@ -68,112 +67,104 @@ RUN apt-get install -q -y --no-install-recommends \
     octomap-tools \
     libminizip-dev \
     libcollada-dom2.4-dp-dev \
-    libboost-python-dev \
-    qt5-default minizip \
     liblapacke-dev \
-    libnewmat10* \
     libgsl-dev \
     libcairo2-dev \
     libpoppler-glib-dev \
     libsdl2-dev \
     libtiff5-dev \
     libxrandr-dev \
-    libyaml-cpp-dev
+    libyaml-cpp-dev \
+    pybind11-dev \
+    rapidjson-dev \
+    qtbase5-dev \
+    libqt5opengl5-dev
 
-RUN apt update && apt install -q -y --no-install-recommends \
-    python-rosinstall \
-    python-rosinstall-generator \
-    python-wstool
-
-RUN apt-get install -q -y --no-install-recommends \
-    ros-melodic-chomp-motion-planner \
-    ros-melodic-sbpl* \
-    ros-melodic-ompl \
-    ros-melodic-trac-ik-* \
-    ros-melodic-srdfdom* \
-    ros-melodic-qt-ros
-
-RUN apt-get install -y --no-install-recommends \
-    doxygen \
-    octave \
-    python-setuptools \
-    python3-setuptools \
-    mlocate \
-    python-tk
-
-RUN python2.7 -m pip install matplotlib==2.2.0 --user
-RUN python2.7 -m pip install pydot==1.2.3
-RUN python2 -m pip install enum34 --user
-RUN python2 -m pip install networkx==2.2 --user
-RUN python2 -m pip install --upgrade scikit-learn
-
-RUN pip3 install --upgrade torch scipy scikit-learn networkx
-RUN pip install pyopengl tqdm scipy --upgrade
-
-RUN mkdir -p ~/git; cd ~/git && \
-   wget https://sourceforge.net/projects/boost/files/boost/1.58.0/boost_1_58_0.tar.gz/download?use_mirror=autoselect -O ~/git/boost_1_58_0.tar.gz && \
-   tar -xzf boost_1_58_0.tar.gz && \
-   cd ~/git/boost_1_58_0/ && \
-   ./bootstrap.sh --exec-prefix=/usr/local && \
-   ./b2 -j `nproc` && \
-   ./b2 -j `nproc` install threading=multi && \
-   updatedb
-
-#installing collada-dom
+# Install collada-dom
 RUN mkdir -p ~/git; cd ~/git && \
     git clone https://github.com/rdiankov/collada-dom.git && \
     cd collada-dom && mkdir build && cd build && \
     cmake .. && \
-    make -j `nproc` && \
+    make -j $(nproc) && \
     make install
 
-# #install osg
+# Install OpenSceneGraph
 RUN mkdir -p ~/git; cd ~/git && \
     git clone https://github.com/openscenegraph/OpenSceneGraph.git && \
-    cd OpenSceneGraph; git reset --hard 1f89e6eb1087add6cd9c743ab07a5bce53b2f480 && \
-    mkdir build; cd build && \
-    cmake -DDESIRED_QT_VERSION=4 .. && \
-    make -j `nproc` && make install && make install_ld_conf
+    cd OpenSceneGraph && git reset --hard ${OSG_COMMIT} && \
+    mkdir build && cd build && \
+    cmake -DDESIRED_QT_VERSION=5 .. && \
+    make -j $(nproc) && make install && make install_ld_conf
 
-# #install FCL
+# Install FCL 0.5.0
 RUN mkdir -p ~/git; cd ~/git && \
     git clone https://github.com/flexible-collision-library/fcl && \
-    cd fcl; git reset --hard 0.5.0 && \
-    mkdir build; cd build && \
+    cd fcl && git reset --hard 0.5.0 && \
+    mkdir build && cd build && \
     cmake .. && \
-    make -j `nproc` && \
+    make -j $(nproc) && \
     make install
 
-# #installing Openrave
-RUN pip install --upgrade --user sympy==0.7.1 && pip install numpy
+# Install newer RapidJSON (system 1.1.0 lacks copyConstStrings needed by OpenRAVE master)
 RUN mkdir -p ~/git; cd ~/git && \
-	git clone -b production https://github.com/rdiankov/openrave.git && \
-    cd openrave; git reset --hard 7c5f5e27eec2b2ef10aa63fbc519a998c276f908 && \
-    mkdir build; cd build && \
-    cmake -DODE_USE_MULTITHREAD=ON -DCMAKE_CXX_STANDARD=11            \
-        -DBoost_NO_SYSTEM_PATHS=TRUE -DBOOST_ROOT=/usr/local/ .. && \
-    make -j `nproc` && \
+    git clone https://github.com/Tencent/rapidjson.git && \
+    cd rapidjson && mkdir build && cd build && \
+    cmake -DRAPIDJSON_BUILD_DOC=OFF -DRAPIDJSON_BUILD_EXAMPLES=OFF -DRAPIDJSON_BUILD_TESTS=OFF .. && \
     make install
 
-# #setting up workspace
-RUN apt-get update && apt-get install -y libompl12 python-catkin-tools && \
-    apt update && apt install -y libompl-dev && \
-    echo "source /opt/ros/melodic/setup.bash" >> ~/.bashrc && \
-    echo 'alias sb="source ~/.bashrc"' >> ~/.bashrc
+# Install OpenRAVE with Python 3.10 pybind11 bindings
+RUN pip3 install --upgrade pip setuptools wheel && \
+    pip3 install sympy "numpy<2" "pybind11>=2.9.2,<3"
+RUN mkdir -p ~/git; cd ~/git && \
+    git clone https://github.com/rdiankov/openrave.git && \
+    cd openrave && git reset --hard ${RAVE_COMMIT} && \
+    mkdir build && cd build && \
+    cmake -DODE_USE_MULTITHREAD=ON \
+          -DCMAKE_CXX_STANDARD=17 \
+          -DCMAKE_CXX_FLAGS="-Wno-error=narrowing -fpermissive" \
+          -DOPT_PYTHON=OFF \
+          -DOPT_PYTHON3=ON \
+          -DOPT_FCL_COLLISION=OFF \
+          -DOPT_MSGPACK=OFF \
+          -DOPT_ENCRYPTION=OFF \
+          -DBoost_NO_BOOST_CMAKE=TRUE \
+          -DBoost_NO_SYSTEM_PATHS=FALSE \
+          -DOSG_DIR=/usr/local \
+          -DCMAKE_LIBRARY_PATH=/usr/local/lib64 \
+          -Dpybind11_DIR=$(python3 -m pybind11 --cmakedir) .. && \
+    make -j $(nproc) && \
+    make install
 
-RUN cd ~/git && \
-    git clone https://github.com/AAIR-Lab/or_catkin.git && \
-    mkdir -p ~/tmp_catkin_ws/src/ && \
-    rm -rf ~/git/or_catkin/openrave-installation/ && \
-    mv or_catkin/* ~/tmp_catkin_ws/src/ && \
-    rm -rf or_catkin/
- 
-RUN source /opt/ros/melodic/setup.bash && \
-    cd ~/tmp_catkin_ws/ && \
-    catkin_make && \
-    echo "source ~/tmp_catkin_ws/devel/setup.bash" >> ~/.bashrc
+# Configure locale and shared library cache
+RUN apt-get update && apt-get install -y --no-install-recommends locales && \
+    locale-gen en_US.UTF-8 && \
+    echo "/usr/local/lib64" > /etc/ld.so.conf.d/local-lib64.conf && \
+    ldconfig
 
-#install x11 files
-RUN apt-get update
-RUN apt-get install -y xauth
-RUN apt-get install -y xorg openbox htop openssh-client
+# installing trac_ik with python bindings
+RUN apt update && apt install -y -q --no-install-recommends \
+    ibboost-all-dev \
+    libeigen3-dev \
+    liborocos-kdl-dev \
+    libnlopt-dev \
+    libnlopt-cxx-dev
+
+RUN pip3 install pytracik
+
+# Install Python dependencies
+WORKDIR /workspaces/
+COPY requirements.txt .
+RUN pip3 install -r /workspaces/requirements.txt
+RUN rm -rf /workspaces/requirements.txt
+
+# Verify openravepy loads correctly
+# X11, OpenGL, and Qt5 XCB runtime support for OpenRAVE viewer
+RUN apt-get update && apt-get install -y \
+    xauth xorg openbox htop openssh-client \
+    libxcb-xinerama0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
+    libxcb-render-util0 libxcb-xinput0 libxcb-xkb1 libxcb-cursor0 \
+    libxkbcommon-x11-0 \
+    libgl1-mesa-dri libgl1-mesa-glx libegl-mesa0 libgbm1 \
+    dbus-x11 libdbus-1-3
+# DBus machine-id needed by Qt5
+RUN dbus-uuidgen > /etc/machine-id 2>/dev/null || true

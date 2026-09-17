@@ -27,7 +27,7 @@ class environment():
 
             self.env_name = env_name[0]
 
-        self.env.SetViewer('qtcoin')
+        self.env.SetViewer('qtosg')
         self.bound_object_name = ['table6','table60']
         
         self.collision = False

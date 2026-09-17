@@ -28,7 +28,7 @@ class environment():
 
             self.env_name = env_name[0]
 
-        self.env.SetViewer('qtcoin')        
+        self.env.SetViewer('qtosg')        
         self.collision = False
         self.can_list = []
         self.table_list = []

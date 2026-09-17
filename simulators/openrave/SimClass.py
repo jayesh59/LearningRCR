@@ -4,8 +4,6 @@ import importlib
 import os
 import sys 
 
-from prpy.planning import BiRRTPlanner
-
 def get_parent_with_file(file_name):
     current_dir = os.getcwd()
     while True:
@@ -21,12 +19,10 @@ if ROOT_DIR is not None and ROOT_DIR not in sys.path:
     sys.path.append(ROOT_DIR)
 
 from src.data_structures.EnvState import EnvState
-from SimConfig import SimConfig
-from Simulator import Simulator
-from Object import Object
-import model_gen_utils
-import sim_utils
-import Robots
+from .SimConfig import SimConfig
+from .Simulator import Simulator
+from .Object import Object
+from . import model_gen_utils, sim_utils, Robots
 from useful_functions import sixd_pose_from_transform, transform_from_sixd_pose 
 
 sim = Simulator()
@@ -46,7 +42,8 @@ class SimClass(Simulator):
 
             self.num_robots = len(self.robots)
 
-            self.motion_planner = BiRRTPlanner()
+            self.motion_planner = sim.RaveCreatePlanner(self.env, 'birrt')
+
             self.clearance = 0.0
 
         cc = sim.RaveCreateCollisionChecker(self.env,'pqp')
@@ -438,11 +435,22 @@ class SimClass(Simulator):
         else:
             self.robot.activate_manip_joints()
 
-        try:
-            traj = self.motion_planner.PlanToConfiguration(self.robot.obj,goal)
+        params = sim.Planner.PlannerParameters()
+        params.SetRobotActiveJoints(self.robot.obj)
+        params.SetGoalConfig(goal)
+
+        traj = sim.RaveCreateTrajectory(self.env,'')
+        with self.robot.obj:
+            self.motion_planner.InitPlan(self.robot.obj, params)
+            status = self.motion_planner.PlanPath(traj)
+
+        status_code = getattr(status, 'statusCode', status)
+        has_solution = getattr(sim, 'PlannerStatusCode', sim.PlannerStatus).HasSolution
+
+        if status_code == has_solution:
             return traj
-        except:
-            return None
+        
+        return None
 
     def change_obj_name(self,current_name, desired_name):
         obj = self.get_obj(current_name)
@@ -567,7 +575,7 @@ class SimClass(Simulator):
         self.env.Save(path)
 
     def visualize_sim(self):
-        self.env.SetViewer("qtcoin")
+        self.env.SetViewer("qtosg")
         return self.env.GetViewer()
         
     def get_objects(self):

@@ -19,7 +19,7 @@ def spawn_plank(env,plank_name,t):
 
 struct_name = "2d_house.dae"
 env = Environment() 
-env.SetViewer('qtcoin')
+env.SetViewer('qtosg')
 env.Load("../../Keva/reference_structure/{}".format(struct_name))
 # env.Load("pi_tower.dae")
 
