@@ -143,13 +143,54 @@ RUN apt-get update && apt-get install -y --no-install-recommends locales && \
 
 # installing trac_ik with python bindings
 RUN apt update && apt install -y -q --no-install-recommends \
-    ibboost-all-dev \
+    libboost-all-dev \
     libeigen3-dev \
     liborocos-kdl-dev \
     libnlopt-dev \
     libnlopt-cxx-dev
 
 RUN pip3 install pytracik
+
+# Install URDF/SRDF support for loading Fetch and other URDF-based robots
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    liburdf-dev \
+    liburdfdom-dev \
+    liburdfdom-headers-dev \
+    libtinyxml2-dev \
+    libconsole-bridge-dev
+
+# Build srdfdom 0.4.2 from source (not in Ubuntu 22.04 repos)
+RUN mkdir -p ~/git; cd ~/git && \
+    git clone https://github.com/ros-planning/srdfdom.git && \
+    cd srdfdom && git checkout 0.4.2 && \
+    printf 'cmake_minimum_required(VERSION 3.10)\nproject(srdfdom)\nfind_package(Boost REQUIRED)\nfind_package(console_bridge REQUIRED)\nfind_package(urdfdom_headers REQUIRED)\nfind_package(PkgConfig REQUIRED)\npkg_check_modules(TINYXML REQUIRED tinyxml)\nfind_path(URDF_INCLUDE_DIR urdf/model.h PATHS /usr/include /usr/local/include)\nfind_library(URDF_LIBRARY NAMES urdf)\ninclude_directories(include ${Boost_INCLUDE_DIRS} ${TINYXML_INCLUDE_DIRS} ${console_bridge_INCLUDE_DIRS} ${urdfdom_headers_INCLUDE_DIRS} ${URDF_INCLUDE_DIR})\nadd_definitions(-DlogError=CONSOLE_BRIDGE_logError -DlogWarn=CONSOLE_BRIDGE_logWarn -DlogInform=CONSOLE_BRIDGE_logInform -DlogDebug=CONSOLE_BRIDGE_logDebug)\nadd_library(srdfdom SHARED src/model.cpp)\ntarget_link_libraries(srdfdom ${TINYXML_LIBRARIES} ${console_bridge_LIBRARIES} ${URDF_LIBRARY} ${Boost_LIBRARIES})\ninstall(TARGETS srdfdom LIBRARY DESTINATION lib)\ninstall(DIRECTORY include/srdfdom DESTINATION include)\n' > CMakeLists.txt && \
+    mkdir build && cd build && \
+    cmake -DCMAKE_INSTALL_PREFIX=/usr/local -DBoost_NO_BOOST_CMAKE=TRUE .. && \
+    make -j $(nproc) && make install
+
+# Build or_urdf OpenRAVE plugin (standalone, no ROS/catkin)
+RUN mkdir -p ~/git; cd ~/git && \
+    git clone https://github.com/AAIR-Lab/or_catkin.git && \
+    cd or_catkin/or_urdf && \
+    sed -i 's|#include <ros/package.h>|// removed: unused|' src/urdf_loader.cpp && \
+    sed -i '19,27s/^/\/\//' src/urdf_loader.cpp && \
+    sed -i '28s/^}/\/\/}/' src/urdf_loader.cpp && \
+    sed -i '121,127s/^/\/\//' src/urdf_loader.cpp && \
+    sed -i '128s/^}/\/\/}/' src/urdf_loader.cpp && \
+    sed -i '252s/link_info->_t = /link_info->SetTransform(/' src/urdf_loader.cpp && \
+    sed -i '253s/parent_joint->parent_to_joint_origin_transform) \* link_info->_t;/parent_joint->parent_to_joint_origin_transform) * link_info->GetTransform());/' src/urdf_loader.cpp && \
+    sed -i '266s/geom_info->_t = /geom_info->SetTransform(/' src/urdf_loader.cpp && \
+    sed -i '266s/);$/));/' src/urdf_loader.cpp && \
+    sed -i '338s/geom_info->_t = /geom_info->SetTransform(/' src/urdf_loader.cpp && \
+    sed -i '338s/);$/));/' src/urdf_loader.cpp && \
+    sed -i '650,652c\            OpenRAVE::Transform st = sphere_info->GetTransform();\n            st.trans = collision_transform * OpenRAVE::Vector(\n                    sphere.center_x_, sphere.center_y_, sphere.center_z_);\n            sphere_info->SetTransform(st);' src/urdf_loader.cpp && \
+    sed -i '777s/geom_info->_t = /geom_info->SetTransform(/' src/urdf_loader.cpp && \
+    sed -i '777s/);$/));/' src/urdf_loader.cpp && \
+    printf '#include <openrave/plugin.h>\n#include "urdf_loader.h"\nstruct URDFPlugin : public RavePlugin {\n    URDFPlugin() { _interfaces[OpenRAVE::PT_Module].push_back("urdf"); }\n    ~URDFPlugin() override {}\n    OpenRAVE::InterfaceBasePtr CreateInterface(OpenRAVE::InterfaceType type, const std::string& interfacename, std::istream& sinput, OpenRAVE::EnvironmentBasePtr penv) override {\n        if (type == OpenRAVE::PT_Module && interfacename == "urdf") return OpenRAVE::InterfaceBasePtr(new or_urdf::URDFLoader(penv));\n        return OpenRAVE::InterfaceBasePtr();\n    }\n    const InterfaceMap& GetInterfaces() const override { return _interfaces; }\n    const std::string& GetPluginName() const override { return _pluginname; }\nprivate:\n    static const std::string _pluginname;\n    InterfaceMap _interfaces;\n};\nconst std::string URDFPlugin::_pluginname = "URDFPlugin";\nOPENRAVE_PLUGIN_API RavePlugin* CreatePlugin() { return new URDFPlugin(); }\n' > src/or_urdf_plugin.cpp && \
+    printf 'cmake_minimum_required(VERSION 3.10)\nproject(or_urdf)\nset(CMAKE_CXX_STANDARD 17)\nset(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fpermissive")\nfind_package(Boost REQUIRED COMPONENTS filesystem system)\nfind_package(PkgConfig REQUIRED)\npkg_check_modules(TINYXML REQUIRED tinyxml)\npkg_check_modules(TINYXML2 REQUIRED tinyxml2)\nfind_package(console_bridge REQUIRED)\nfind_path(OpenRAVE_INCLUDE_DIR openrave/openrave.h PATHS /usr/local/include/openrave-0.149)\nfind_library(OpenRAVE_LIBRARY NAMES openrave0.149 PATHS /usr/local/lib)\nfind_library(OpenRAVE_CORE_LIBRARY NAMES openrave0.149-core PATHS /usr/local/lib)\nfind_path(URDF_INCLUDE_DIR urdf/model.h PATHS /usr/include /usr/local/include)\nfind_library(URDF_LIBRARY NAMES urdf PATHS /usr/lib/x86_64-linux-gnu /usr/local/lib)\nfind_path(SRDFDOM_INCLUDE_DIR srdfdom/model.h PATHS /usr/include /usr/local/include)\nfind_library(SRDFDOM_LIBRARY NAMES srdfdom PATHS /usr/local/lib /usr/lib/x86_64-linux-gnu)\nadd_definitions(-DlogError=CONSOLE_BRIDGE_logError -DlogWarn=CONSOLE_BRIDGE_logWarn -DlogInform=CONSOLE_BRIDGE_logInform -DlogDebug=CONSOLE_BRIDGE_logDebug -DOPENRAVE_DLL -DOPENRAVE_CORE_DLL)\ninclude_directories(src ${OpenRAVE_INCLUDE_DIR} ${Boost_INCLUDE_DIRS} ${TINYXML_INCLUDE_DIRS} ${TINYXML2_INCLUDE_DIRS} ${URDF_INCLUDE_DIR} ${SRDFDOM_INCLUDE_DIR} ${console_bridge_INCLUDE_DIRS})\nadd_library(or_urdf SHARED src/urdf_loader.cpp src/catkin_finder.cpp src/or_urdf_plugin.cpp)\ntarget_link_libraries(or_urdf ${OpenRAVE_LIBRARY} ${OpenRAVE_CORE_LIBRARY} ${Boost_LIBRARIES} ${TINYXML_LIBRARIES} ${TINYXML2_LIBRARIES} ${URDF_LIBRARY} ${SRDFDOM_LIBRARY} ${console_bridge_LIBRARIES})\ninstall(TARGETS or_urdf LIBRARY DESTINATION lib/openrave0.149-plugins)\n' > CMakeLists.txt && \
+    mkdir build && cd build && \
+    cmake -DCMAKE_INSTALL_PREFIX=/usr/local -DBoost_NO_BOOST_CMAKE=TRUE .. && \
+    make -j $(nproc) && make install
 
 # Install Python dependencies
 WORKDIR /workspaces/
