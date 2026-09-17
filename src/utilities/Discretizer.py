@@ -2,8 +2,7 @@ import math
 import numpy as np
 import sys
 
-if int(sys.version.split(".")[0]) > 2:
-    import torch
+import torch
 
 DEFAULT_START = np.array([-0.5,-0.5,-0.5,-math.radians(180),-math.radians(180),-math.radians(180)])
 DEFAULT_END = np.array([0.5,0.5,0.5,math.radians(180),math.radians(180),math.radians(180)])

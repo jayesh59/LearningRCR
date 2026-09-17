@@ -416,6 +416,10 @@ class Fetch(Robot):
         robot = self.env.GetRobot(name)
         robot.SetName("{}_{}".format(name, self.id))
 
+        robot.SetVisible(True)
+        for link in robot.GetLinks():
+            link.SetVisible(True)
+
         return robot
 
     def random_config_robot(self, current_dof=None, collision_fn=None, limits=None, **kwargs):
@@ -446,7 +450,19 @@ class Fetch(Robot):
         for i, gi in enumerate(gripperIndices):
             closingDirection[i] = -1.0
 
-        gripperManip.SetChuckingDirection(closingDirection)
+        try:
+            gripperManip.SetChuckingDirection(closingDirection)
+        except AttributeError:
+            # OpenRAVE master removed SetChuckingDirection; update via ManipulatorInfo
+            info = gripperManip.GetInfo()
+            info._vChuckingDirection = list(closingDirection)
+            name = gripperManip.GetName()
+            self.obj.RemoveManipulator(gripperManip)
+            self.obj.AddManipulator(info)
+            self.obj.SetActiveManipulator(name)
+
+        gripperManip = self.obj.GetActiveManipulator()
+
         gripperManip.SetLocalToolDirection([1, 0, 0])
 
     def openGripper(self):
@@ -489,23 +505,13 @@ class Fetch(Robot):
             collision = check_collisions
 
             required_T = np.linalg.pinv(self.base_link.GetTransform()).dot(end_effector_solution)
-            pose = sixd_pose_from_transform(required_T)
-            pos = pose[:3]
-            orn = sim.quatFromAxisAngle(pose[3:])
 
             ik_count = 0
             collision = True
             while collision:
-                seed_state = [np.random.uniform(-3.14, 3.14)] * self.ik_solver.number_of_joints
-                solutions = self.ik_solver.get_ik(
-                    seed_state,
-                    pos[0],
-                    pos[1],
-                    pos[2],  # X, Y, Z
-                    orn[1],
-                    orn[2],
-                    orn[3],
-                    orn[0],  # QX, QY, QZ, QW
+                seed_state = current_state
+                solutions = self.ik_solver.ik(
+                    required_T[:3, 3], required_T[:3, :3], seed_jnt_values=seed_state
                 )
                 ik_count += 1
                 if ik_count <= SimConfig.MAX_IK_ATTEMPTS:
@@ -644,6 +650,10 @@ class yumi(Robot):
         robot = self.env.GetRobot(name)
         robot.SetName("{}_1".format(name))
 
+        robot.SetVisible(True)
+        for link in robot.GetLinks():
+            link.SetVisible(True)
+
         return robot
 
     def activate_manip_joints(self, arm="left", **kwargs):
@@ -737,21 +747,11 @@ class yumi(Robot):
         ik_count = 0
 
         required_T = np.linalg.pinv(self.obj_init_transform).dot(end_effector_solution)
-        pose = sixd_pose_from_transform(required_T)
-        pos = pose[:3]
-        orn = sim.quatFromAxisAngle(pose[3:])
 
         while collision:
-            seed_state = [np.random.uniform(-3.14, 3.14)] * ik_solver.number_of_joints
-            joint_values = ik_solver.get_ik(
-                seed_state,
-                pos[0],
-                pos[1],
-                pos[2],  # X, Y, Z
-                orn[1],
-                orn[2],
-                orn[3],
-                orn[0],  # QX, QY, QZ, QW
+            seed_state = current_state
+            joint_values = ik_solver.ik(
+                required_T[:3, 3], required_T[:3, :3], seed_jnt_values=seed_state
             )
             ik_count += 1
             if ik_count <= SimConfig.MAX_IK_ATTEMPTS:
